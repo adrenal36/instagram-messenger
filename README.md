@@ -24,22 +24,72 @@ Instagram Direct, but as a real desktop app. It runs the regular web UI inside a
 
 ## Install
 
-Grab the file that matches your system from the [**Releases page**](https://github.com/adrenal36/instagram-messenger/releases/latest):
+Grab the file that matches your system from the [**Releases page**](https://github.com/adrenal36/instagram-messenger/releases/latest), then follow the steps below for your OS.
 
-| Your OS | File | What it is |
-|---|---|---|
-| 🐧 **Linux — any distro** | `Instagram Messenger-X.Y.Z.AppImage` | Portable single file. `chmod +x` and run. |
-| 🐧 **Debian / Ubuntu / Mint / Pop!_OS** | `instagram-messenger_X.Y.Z_amd64.deb` | System install: `sudo apt install ./file.deb` |
-| 🪟 **Windows 10 / 11** | `Instagram Messenger Setup X.Y.Z.exe` | Standard installer. Double-click and follow the wizard. |
-| 🪟 **Windows (portable)** | `Instagram Messenger X.Y.Z.exe` | Single file, no install. Copy anywhere and run. |
-| 🍎 **macOS** | *not yet available* | See [limitations](#known-limitations) — PRs welcome. |
+### 🐧 Linux — Debian / Ubuntu / Mint / Pop!_OS (`.deb`)
 
-> [!NOTE]
-> **AppImage users on modern Ubuntu/Debian:** you'll need FUSE — `sudo apt install -y libfuse2`. Arch: `sudo pacman -S fuse2`. Fedora: `sudo dnf install fuse`.
->
-> **Windows SmartScreen** will warn on first run because the build is unsigned. Click **More info → Run anyway**. Code-signing certs aren't worth it for a personal wrapper.
+Best choice if you're on a Debian-family distro: registers in your app menu, handles dependencies automatically, one command to install.
 
-Prefer to hand this install to an AI assistant? See [`docs/INSTALL-FOR-AGENTS.md`](./docs/INSTALL-FOR-AGENTS.md).
+1. Download **`instagram-messenger_0.3.0_amd64.deb`** from [Releases](https://github.com/adrenal36/instagram-messenger/releases/latest).
+2. Install it with `apt`:
+   ```bash
+   sudo apt install ./instagram-messenger_0.3.0_amd64.deb
+   ```
+3. Launch it from your application menu, or from a terminal:
+   ```bash
+   instagram-messenger
+   ```
+
+To uninstall later: `sudo apt remove instagram-messenger`.
+
+### 🐧 Linux — any other distro (AppImage)
+
+Works on Arch, Fedora, openSUSE, NixOS, and any distro. One portable file, no install.
+
+1. Install FUSE (one-time, if you don't already have it):
+   - **Ubuntu 22.04+ / Mint:** `sudo apt install -y libfuse2`
+   - **Arch:** `sudo pacman -S fuse2`
+   - **Fedora:** `sudo dnf install fuse`
+2. Download **`Instagram-Messenger-0.3.0.AppImage`** from [Releases](https://github.com/adrenal36/instagram-messenger/releases/latest).
+3. Make it executable and run it:
+   ```bash
+   chmod +x Instagram-Messenger-0.3.0.AppImage
+   ./Instagram-Messenger-0.3.0.AppImage
+   ```
+
+Move the AppImage wherever you want — `~/Applications/` is the conventional per-user location. To register it in your app menu automatically, install [`AppImageLauncher`](https://github.com/TheAssassin/AppImageLauncher) once.
+
+### 🪟 Windows 10 / 11 — installer (recommended)
+
+1. Download **`Instagram-Messenger-Setup-0.3.0.exe`** from [Releases](https://github.com/adrenal36/instagram-messenger/releases/latest).
+2. Double-click the installer.
+3. **Windows SmartScreen will warn you** that it doesn't recognize the app. This is expected — the build is unsigned (code-signing certs cost ~$100/year and aren't worth it for a personal wrapper). Click **More info** → **Run anyway**.
+4. Follow the installer wizard. Instagram Messenger will be added to your Start menu.
+5. Launch it from the Start menu.
+
+To uninstall later: Settings → Apps → Installed apps → Instagram Messenger → Uninstall.
+
+### 🪟 Windows — portable (no install)
+
+Use this if you don't want anything touching the registry.
+
+1. Download **`Instagram-Messenger-0.3.0.exe`** (the one **without** "Setup" in the name).
+2. Copy it wherever you want it to live — Desktop, `Downloads/`, a USB stick, anywhere.
+3. Double-click to run. Same SmartScreen step as above on the first launch: **More info** → **Run anyway**.
+
+No registry changes, no Start menu entry. Delete the `.exe` to uninstall.
+
+### 🍎 macOS
+
+Not yet available — see [limitations](#known-limitations). PRs welcome from anyone with a Mac and an Apple Developer certificate.
+
+### 🤖 Prefer to hand this to an AI assistant?
+
+Paste this into Claude, ChatGPT, Gemini, or any capable coding AI:
+
+> Please install Instagram Messenger for me. The structured install spec is at `https://github.com/adrenal36/instagram-messenger/blob/master/docs/INSTALL-FOR-AGENTS.md` — read it and follow the commands for my operating system.
+
+The AI will detect your OS, pick the right asset, download it, install it, and launch the app. You'll just need to log into Instagram once when the window opens.
 
 ## First launch
 
