@@ -1,0 +1,16 @@
+node_modules/
+package-lock.json
+*.log
+dist/
+out/
+
+# Local rollback safety net — not for distribution
+main.js.bak
+
+# Editor / OS junk
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
