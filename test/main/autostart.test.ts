@@ -10,6 +10,12 @@ import {
   type AutostartContext,
 } from '../../src/main/autostart.js';
 
+// The XDG autostart helpers are Linux-only — they build `~/.config/autostart/*.desktop`
+// files that only exist on Linux desktops. On Windows the main process takes a different
+// code path (`app.setLoginItemSettings`), so these tests are not meaningful there and
+// would fail on path-separator differences. Skip the whole file on non-Linux CI runners.
+const describeLinux = process.platform === 'linux' ? describe : describe.skip;
+
 // Pure-string tests don't need a tmp dir — use a frozen context.
 const STATIC_CTX: AutostartContext = {
   homeDir: '/home/testuser',
@@ -17,7 +23,7 @@ const STATIC_CTX: AutostartContext = {
   execPath: '/opt/instagram-messenger/instagram-messenger',
 };
 
-describe('autostartDesktopFilePath', () => {
+describeLinux('autostartDesktopFilePath', () => {
   it('returns the XDG autostart path ending with the app slug (TSC-A13)', () => {
     const p = autostartDesktopFilePath(STATIC_CTX.homeDir);
     expect(p.endsWith('/.config/autostart/instagram-messenger.desktop')).toBe(true);
@@ -25,7 +31,7 @@ describe('autostartDesktopFilePath', () => {
   });
 });
 
-describe('buildDesktopFile', () => {
+describeLinux('buildDesktopFile', () => {
   it('includes X-GNOME-Autostart-enabled=true and StartupWMClass (TSC-A17)', () => {
     const text = buildDesktopFile(STATIC_CTX);
     expect(text).toContain('X-GNOME-Autostart-enabled=true');
@@ -60,7 +66,7 @@ describe('buildDesktopFile', () => {
 });
 
 // Filesystem-touching tests get a fresh tmp home per test.
-describe('filesystem operations', () => {
+describeLinux('filesystem operations', () => {
   let fakeHome: string;
   let ctx: AutostartContext;
 
