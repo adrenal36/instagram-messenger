@@ -6,10 +6,10 @@
 
 **A polished Electron desktop wrapper for Instagram Direct — tray, notifications, global hotkey, autostart.**
 
-[![License: MIT](https://img.shields.io/github/license/adrenal36/instagram-messenger?color=f0b840&labelColor=152332&style=for-the-badge)](./LICENSE)
+[![License: MIT](https://img.shields.io/github/license/adrenal36/instagram-messenger?color=f0b840&labelColor=152332&style=for-the-badge&cacheSeconds=300)](./LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-00505f?labelColor=152332&style=for-the-badge)](#install)
-[![Release](https://img.shields.io/github/v/release/adrenal36/instagram-messenger?include_prereleases&color=f0b840&labelColor=152332&style=for-the-badge)](https://github.com/adrenal36/instagram-messenger/releases)
-[![Downloads](https://img.shields.io/github/downloads/adrenal36/instagram-messenger/total?color=00505f&labelColor=152332&style=for-the-badge)](https://github.com/adrenal36/instagram-messenger/releases)
+[![Release](https://img.shields.io/github/v/release/adrenal36/instagram-messenger?include_prereleases&color=f0b840&labelColor=152332&style=for-the-badge&cacheSeconds=300)](https://github.com/adrenal36/instagram-messenger/releases)
+[![Downloads](https://img.shields.io/github/downloads/adrenal36/instagram-messenger/total?color=00505f&labelColor=152332&style=for-the-badge&cacheSeconds=300)](https://github.com/adrenal36/instagram-messenger/releases)
 
 </div>
 
