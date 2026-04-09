@@ -1,11 +1,9 @@
-// main.js — Instagram Messenger (Electron cross-platform wrapper)
+// main.ts — Instagram Messenger (Electron cross-platform wrapper)
 //
-// Surgical upgrade of the original 60-line webview wrapper.
-// Preserved behavior: desktop UA, persistent session partition, external-link
-// handoff to system browser. Everything new is added in try/catch so one
-// failing feature can't take down the app.
+// Phase B TypeScript port of the original main.js. All pure logic lives in
+// src/main/ and src/shared/ (unit-tested); this file is the Electron glue.
 
-const {
+import {
   app,
   BrowserWindow,
   Tray,
@@ -16,41 +14,50 @@ const {
   ipcMain,
   nativeTheme,
   shell,
-} = require('electron');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+  type NativeImage,
+  type IpcMainEvent,
+  type MenuItemConstructorOptions,
+  type HandlerDetails,
+} from 'electron';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
-// ─── Constants ────────────────────────────────────────────────────────
+import {
+  APP_NAME,
+  APP_ID,
+  START_URL,
+  DESKTOP_UA,
+  SESSION_PARTITION,
+  GLOBAL_HOTKEY,
+  IPC_DM_ACTIVITY,
+  ZOOM_MIN,
+  ZOOM_MAX,
+  ZOOM_STEP,
+} from './shared/constants.js';
+import { loadZoom, saveZoom } from './main/zoom.js';
+import {
+  isAutostartEnabledLinux,
+  setAutostartLinux,
+  type AutostartContext,
+} from './main/autostart.js';
 
-// Real Chrome desktop UA so Instagram serves the full web experience
-const DESKTOP_UA =
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) ' +
-  'Chrome/131.0.0.0 Safari/537.36';
+// ─── Paths ───────────────────────────────────────────────────────────
+// __dirname at runtime is `<app>/dist-ts/`. Assets live one level up in
+// `<app>/build/` and `<app>/dist-ts/preload.js`.
+const ASSET_DIR = path.join(__dirname, '..', 'build');
+const ICON_PATH = path.join(ASSET_DIR, 'icon.png');
+const TRAY_PLAIN_PATH = path.join(ASSET_DIR, 'tray-plain.png');
+const TRAY_DOT_PATH = path.join(ASSET_DIR, 'tray-dot.png');
+const PRELOAD_PATH = path.join(__dirname, 'preload.js');
 
-const START_URL = 'https://www.instagram.com/direct/inbox/';
-const APP_NAME = 'Instagram Messenger';
-const APP_ID = 'badwolf.ro.instagram-messenger';
-const GLOBAL_HOTKEY = 'CommandOrControl+Shift+M';
-const SESSION_PARTITION = 'persist:instagram';
-const IPC_DM_ACTIVITY = 'dm-activity';
-
-const ZOOM_MIN = -3;
-const ZOOM_MAX = 3;
-const ZOOM_STEP = 0.5;
-
-const ICON_PATH = path.join(__dirname, 'build', 'icon.png');
-const TRAY_PLAIN_PATH = path.join(__dirname, 'build', 'tray-plain.png');
-const TRAY_DOT_PATH = path.join(__dirname, 'build', 'tray-dot.png');
-
-const zoomStateFile = () =>
+const zoomStateFile = (): string =>
   path.join(app.getPath('userData'), 'zoom.json');
 
 // ─── Logging ─────────────────────────────────────────────────────────
 
 const LOG_PREFIX = '[instagram-messenger]';
-const log = (...args) => console.log(LOG_PREFIX, ...args);
-const warn = (...args) => console.warn(LOG_PREFIX, ...args);
+const log = (...args: unknown[]): void => { console.log(LOG_PREFIX, ...args); };
+const warn = (...args: unknown[]): void => { console.warn(LOG_PREFIX, ...args); };
 
 // ─── Early config (must run before `ready`) ─────────────────────────
 
@@ -63,32 +70,33 @@ app.setName(APP_NAME);
 
 // Windows: set AppUserModelID so notifications attribute to our app
 if (process.platform === 'win32') {
-  try { app.setAppUserModelId(APP_ID); } catch (_) { /* noop */ }
+  try { app.setAppUserModelId(APP_ID); } catch { /* noop */ }
 }
 
 // ─── State ───────────────────────────────────────────────────────────
 
-let mainWindow = null;
-let tray = null;
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 let hasUnread = false;
 let isQuitting = false;
 const startHidden = process.argv.includes('--hidden');
 
 // Cached nativeImage instances for the tray — avoid re-reading PNGs from disk
 // on every badge state change.
-let trayImgPlain = null;
-let trayImgDot = null;
+let trayImgPlain: NativeImage | null = null;
+let trayImgDot: NativeImage | null = null;
+let notificationIcon: NativeImage | null = null;
 
 // ─── Window helpers (used by tray, hotkey, notification, IPC) ───────
 
-function showMainWindow() {
+function showMainWindow(): void {
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   if (!mainWindow.isVisible()) mainWindow.show();
   mainWindow.focus();
 }
 
-function toggleMainWindow() {
+function toggleMainWindow(): void {
   if (!mainWindow) return;
   if (mainWindow.isVisible() && mainWindow.isFocused()) {
     mainWindow.hide();
@@ -111,100 +119,55 @@ if (app.isPackaged) {
   log('dev mode — skipping single-instance lock');
 }
 
-// ─── Zoom persistence ────────────────────────────────────────────────
+// ─── Autostart wiring ────────────────────────────────────────────────
 
-function loadZoom() {
-  try {
-    const raw = fs.readFileSync(zoomStateFile(), 'utf8');
-    const parsed = JSON.parse(raw);
-    return typeof parsed.zoom === 'number' ? parsed.zoom : 0;
-  } catch (_) {
-    return 0;
-  }
+function autostartContext(): AutostartContext {
+  return {
+    homeDir: os.homedir(),
+    iconPath: ICON_PATH,
+    execPath: process.env['APPIMAGE'] ?? process.execPath,
+  };
 }
 
-function saveZoom(zoom) {
-  try {
-    fs.mkdirSync(path.dirname(zoomStateFile()), { recursive: true });
-    fs.writeFileSync(zoomStateFile(), JSON.stringify({ zoom }));
-  } catch (e) {
-    warn('failed to persist zoom:', e.message);
-  }
-}
-
-// ─── Autostart (cross-platform) ─────────────────────────────────────
-
-function autostartDesktopFilePath() {
-  return path.join(
-    os.homedir(),
-    '.config',
-    'autostart',
-    'instagram-messenger.desktop'
-  );
-}
-
-function isAutostartEnabled() {
+function isAutostartEnabled(): boolean {
   try {
     if (process.platform === 'linux') {
-      return fs.existsSync(autostartDesktopFilePath());
+      return isAutostartEnabledLinux(os.homedir());
     }
-    return app.getLoginItemSettings().openAtLogin === true;
-  } catch (_) {
+    return app.getLoginItemSettings().openAtLogin;
+  } catch {
     return false;
   }
 }
 
-function setAutostart(enabled) {
+function setAutostart(enabled: boolean): boolean {
   try {
     if (process.platform === 'linux') {
-      const file = autostartDesktopFilePath();
-      if (enabled) {
-        const execPath = process.env.APPIMAGE || process.execPath;
-        const content =
-          '[Desktop Entry]\n' +
-          'Type=Application\n' +
-          'Version=1.0\n' +
-          `Name=${APP_NAME}\n` +
-          'Comment=Desktop wrapper for Instagram Direct\n' +
-          `Exec=${execPath} --hidden\n` +
-          `Icon=${ICON_PATH}\n` +
-          'Terminal=false\n' +
-          'Categories=Network;InstantMessaging;Chat;\n' +
-          'X-GNOME-Autostart-enabled=true\n' +
-          'StartupWMClass=instagram-messenger\n';
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, content);
-        log('autostart enabled →', file);
-      } else if (fs.existsSync(file)) {
-        fs.unlinkSync(file);
-        log('autostart disabled');
-      }
-    } else {
-      app.setLoginItemSettings({
-        openAtLogin: enabled,
-        args: ['--hidden'],
-      });
-      log(`autostart ${enabled ? 'enabled' : 'disabled'} (native)`);
+      const ok = setAutostartLinux(enabled, autostartContext());
+      log(`autostart ${enabled ? 'enabled' : 'disabled'} (xdg)`);
+      return ok;
     }
+    app.setLoginItemSettings({ openAtLogin: enabled, args: ['--hidden'] });
+    log(`autostart ${enabled ? 'enabled' : 'disabled'} (native)`);
     return true;
   } catch (e) {
-    warn('autostart toggle failed:', e.message);
+    warn('autostart toggle failed:', (e as Error).message);
     return false;
   }
 }
 
 // ─── Badge state (tray + platform overlays) ─────────────────────────
 
-function setBadgeState(unread) {
+function setBadgeState(unread: boolean): void {
   if (unread === hasUnread) return; // avoid redundant native calls
   hasUnread = unread;
 
   try {
     if (tray) {
-      tray.setImage(unread ? trayImgDot : trayImgPlain);
+      tray.setImage((unread ? trayImgDot : trayImgPlain) ?? trayImgPlain!);
     }
   } catch (e) {
-    warn('tray image swap failed:', e.message);
+    warn('tray image swap failed:', (e as Error).message);
   }
 
   try {
@@ -217,7 +180,7 @@ function setBadgeState(unread) {
       }
     }
   } catch (e) {
-    warn('setOverlayIcon failed:', e.message);
+    warn('setOverlayIcon failed:', (e as Error).message);
   }
 
   try {
@@ -225,13 +188,13 @@ function setBadgeState(unread) {
       app.setBadgeCount(unread ? 1 : 0);
     }
   } catch (e) {
-    warn('setBadgeCount failed:', e.message);
+    warn('setBadgeCount failed:', (e as Error).message);
   }
 }
 
 // ─── Window ──────────────────────────────────────────────────────────
 
-function createWindow() {
+function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1200,
     height: 820,
@@ -244,9 +207,9 @@ function createWindow() {
     show: !startHidden,
     webPreferences: {
       partition: SESSION_PARTITION,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: PRELOAD_PATH,
       contextIsolation: true,
-      // sandbox: false is required so the preload can use require('electron').ipcRenderer.
+      // sandbox:false is required so the preload can use require('electron').ipcRenderer.
       // This is an IPC-only preload that does not expose anything to the page.
       sandbox: false,
       spellcheck: true,
@@ -256,18 +219,18 @@ function createWindow() {
   try {
     win.webContents.session.setSpellCheckerLanguages(['en-US']);
   } catch (e) {
-    warn('spell-checker language set failed:', e.message);
+    warn('spell-checker language set failed:', (e as Error).message);
   }
 
   // Preserve original UA behavior on the full session (incl. subresources)
   win.webContents.setUserAgent(DESKTOP_UA);
-  win.loadURL(START_URL, { userAgent: DESKTOP_UA });
+  void win.loadURL(START_URL, { userAgent: DESKTOP_UA });
 
   // Restore persisted zoom after the page finishes loading
   win.webContents.on('did-finish-load', () => {
-    const z = loadZoom();
+    const z = loadZoom(zoomStateFile());
     if (z !== 0) {
-      try { win.webContents.setZoomLevel(z); } catch (_) {}
+      try { win.webContents.setZoomLevel(z); } catch { /* ignore */ }
     }
   });
 
@@ -279,31 +242,26 @@ function createWindow() {
         ? Math.min(ZOOM_MAX, current + ZOOM_STEP)
         : Math.max(ZOOM_MIN, current - ZOOM_STEP);
     win.webContents.setZoomLevel(next);
-    saveZoom(next);
+    saveZoom(zoomStateFile(), next);
   });
 
   // Keep the window title stable — don't let Instagram overwrite it.
-  // (Initial title is set via BrowserWindow `title:` option above.)
   win.on('page-title-updated', (e) => e.preventDefault());
 
   // CSS injection on dom-ready (robust under contextIsolation)
   win.webContents.on('dom-ready', () => {
-    try {
-      win.webContents.insertCSS(
-        '[data-testid="install-app-banner"]{display:none !important;}'
-      );
-    } catch (e) {
-      warn('insertCSS failed:', e.message);
-    }
+    void win.webContents
+      .insertCSS('[data-testid="install-app-banner"]{display:none !important;}')
+      .catch((e: Error) => warn('insertCSS failed:', e.message));
   });
 
   // External links → system browser (PRESERVED from original)
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler((details: HandlerDetails) => {
     try {
-      const host = new URL(url).hostname;
+      const host = new URL(details.url).hostname;
       if (host.endsWith('instagram.com')) return { action: 'allow' };
-    } catch (_) { /* malformed URL → fall through */ }
-    shell.openExternal(url);
+    } catch { /* malformed URL → fall through */ }
+    void shell.openExternal(details.url);
     return { action: 'deny' };
   });
 
@@ -312,9 +270,9 @@ function createWindow() {
       const host = new URL(url).hostname;
       if (!host.endsWith('instagram.com')) {
         event.preventDefault();
-        shell.openExternal(url);
+        void shell.openExternal(url);
       }
-    } catch (_) { /* ignore */ }
+    } catch { /* ignore */ }
   });
 
   win.webContents.on('did-fail-load', (_e, code, desc, failedURL) => {
@@ -339,14 +297,14 @@ function createWindow() {
 
 // ─── Tray ────────────────────────────────────────────────────────────
 
-function createTray() {
+function createTray(): void {
   try {
     trayImgPlain = nativeImage.createFromPath(TRAY_PLAIN_PATH);
     trayImgDot = nativeImage.createFromPath(TRAY_DOT_PATH);
     tray = new Tray(trayImgPlain);
     tray.setToolTip(APP_NAME);
 
-    const template = [
+    const template: MenuItemConstructorOptions[] = [
       { label: 'Show / Hide', click: toggleMainWindow },
     ];
 
@@ -376,13 +334,13 @@ function createTray() {
 
     log('tray created');
   } catch (e) {
-    warn('tray creation failed:', e.message);
+    warn('tray creation failed:', (e as Error).message);
   }
 }
 
 // ─── Global hotkey ───────────────────────────────────────────────────
 
-function registerShortcuts() {
+function registerShortcuts(): void {
   try {
     const ok = globalShortcut.register(GLOBAL_HOTKEY, () => {
       if (!mainWindow) return;
@@ -396,23 +354,23 @@ function registerShortcuts() {
     if (ok) log(`global hotkey registered: ${GLOBAL_HOTKEY}`);
     else warn(`global hotkey ${GLOBAL_HOTKEY} failed to register (Wayland without portal?)`);
   } catch (e) {
-    warn('globalShortcut exception:', e.message);
+    warn('globalShortcut exception:', (e as Error).message);
   }
 }
 
 // ─── Hidden app menu (for keyboard accelerators) ────────────────────
 
-function setupAcceleratorsMenu(win) {
-  const applyZoom = (z) => {
+function setupAcceleratorsMenu(win: BrowserWindow): void {
+  const applyZoom = (z: number): void => {
     const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
     win.webContents.setZoomLevel(clamped);
-    saveZoom(clamped);
+    saveZoom(zoomStateFile(), clamped);
   };
-  const zoomIn = () => applyZoom(win.webContents.getZoomLevel() + ZOOM_STEP);
-  const zoomOut = () => applyZoom(win.webContents.getZoomLevel() - ZOOM_STEP);
-  const zoomReset = () => applyZoom(0);
+  const zoomIn = (): void => applyZoom(win.webContents.getZoomLevel() + ZOOM_STEP);
+  const zoomOut = (): void => applyZoom(win.webContents.getZoomLevel() - ZOOM_STEP);
+  const zoomReset = (): void => applyZoom(0);
 
-  const template = [
+  const template: MenuItemConstructorOptions[] = [
     {
       label: 'View',
       submenu: [
@@ -444,11 +402,8 @@ function setupAcceleratorsMenu(win) {
 
 // ─── IPC from preload ────────────────────────────────────────────────
 
-// Notification icon cached — avoid re-reading the PNG on every activity event
-let notificationIcon = null;
-
-function setupIpc() {
-  ipcMain.on(IPC_DM_ACTIVITY, () => {
+function setupIpc(): void {
+  ipcMain.on(IPC_DM_ACTIVITY, (_event: IpcMainEvent) => {
     if (!mainWindow) return;
     const focused = mainWindow.isFocused() && mainWindow.isVisible();
     if (focused) return; // no badge/notification when user is already looking
@@ -468,29 +423,32 @@ function setupIpc() {
       n.on('click', showMainWindow);
       n.show();
     } catch (e) {
-      warn('notification failed:', e.message);
+      warn('notification failed:', (e as Error).message);
     }
   });
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────────
 
-app.whenReady().then(() => {
-  setupIpc();
-  mainWindow = createWindow();
-  setupAcceleratorsMenu(mainWindow);
-  createTray();
-  registerShortcuts();
-}).catch((e) => {
-  warn('startup failed:', e && e.stack || e);
-});
+app
+  .whenReady()
+  .then(() => {
+    setupIpc();
+    mainWindow = createWindow();
+    setupAcceleratorsMenu(mainWindow);
+    createTray();
+    registerShortcuts();
+  })
+  .catch((e: unknown) => {
+    warn('startup failed:', e instanceof Error ? e.stack ?? e.message : String(e));
+  });
 
 app.on('before-quit', () => {
   isQuitting = true;
 });
 
 app.on('will-quit', () => {
-  try { globalShortcut.unregisterAll(); } catch (_) {}
+  try { globalShortcut.unregisterAll(); } catch { /* ignore */ }
 });
 
 // Stay alive in the tray when the window is closed.
