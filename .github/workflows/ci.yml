@@ -1,0 +1,31 @@
+name: CI
+
+# Runs on every push and PR. Type-checks the TypeScript sources and runs
+# the Vitest regression suite. Release builds are gated on this passing.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Test
+        run: npm test

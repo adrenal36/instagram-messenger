@@ -2,7 +2,10 @@ node_modules/
 package-lock.json
 *.log
 dist/
+dist-ts/
 out/
+coverage/
+*.tsbuildinfo
 
 # Local rollback safety net — not for distribution
 main.js.bak
