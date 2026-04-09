@@ -56,6 +56,12 @@
       ],
       "icon": "build/icon.png"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "adrenal36",
+      "repo": "instagram-messenger",
+      "releaseType": "draft"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

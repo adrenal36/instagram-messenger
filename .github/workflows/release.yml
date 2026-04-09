@@ -1,0 +1,54 @@
+name: Release
+
+# Triggered when a version tag (v*) is pushed, or manually from the Actions tab.
+# Each matrix job builds its native platform and uploads artifacts to a draft
+# GitHub Release. Review the draft in the Releases tab and click "Publish" to
+# make it public.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write  # required for electron-builder to create/update releases
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            # Native build: AppImage (portable) + deb (system install)
+            electron_builder_args: --linux AppImage deb
+          - os: windows-latest
+            # Native build: nsis installer + portable exe (no wine needed)
+            electron_builder_args: --win nsis portable
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax check
+        run: node --check main.js && node --check preload.js
+        shell: bash
+
+      - name: Build and publish to GitHub Releases
+        env:
+          # electron-builder reads GH_TOKEN to talk to the GitHub API.
+          # GITHUB_TOKEN is auto-provided by Actions and has the `contents: write`
+          # scope granted above — no extra secret needed.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.electron_builder_args }} --publish always

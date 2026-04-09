@@ -57,7 +57,29 @@ npm run dist:linux        # produces AppImage + .deb in dist/
 npm run dist:win          # produces Windows zip in dist/ (see note below)
 ```
 
-**Note on Windows cross-compile from Linux:** `electron-builder` runs `winCodeSign` (an rcedit step for icon metadata) through Wine. If you don't have Wine installed, the build fails at the signing step but `dist/win-unpacked/` still contains a fully functional Windows `.exe` — you can zip it manually, or `sudo apt install wine` and retry for an installer with proper icon metadata.
+**Note on Windows cross-compile from Linux:** `electron-builder` runs `winCodeSign` (an rcedit step for icon metadata) through Wine. If you don't have Wine installed, the build fails at the signing step but `dist/win-unpacked/` still contains a fully functional Windows `.exe` — you can zip it manually, or `sudo apt install wine` and retry for an installer with proper icon metadata. **For official releases, CI handles this natively on a Windows runner** (see below), so this is only a concern for local builds.
+
+## Releases (automated via GitHub Actions)
+
+Official releases are built by `.github/workflows/release.yml` — parallel jobs on `ubuntu-latest` and `windows-latest` produce all platform artifacts natively (no Wine needed on the Windows runner, so the `.exe` gets proper icon metadata via rcedit) and upload them to a **draft** GitHub Release.
+
+**To cut a new release:**
+
+```bash
+# 1. Bump version in package.json (e.g. 0.2.0 → 0.2.1)
+# 2. Commit the bump
+git add package.json
+git commit -m "Bump to v0.2.1"
+git push
+
+# 3. Tag and push the tag — this triggers the release workflow
+git tag v0.2.1
+git push origin v0.2.1
+```
+
+Within ~5 minutes, a new draft release appears at [`/releases`](https://github.com/adrenal36/instagram-messenger/releases) with the AppImage, `.deb`, nsis installer, and portable `.exe` all attached. Review the draft in the GitHub UI, then click **Publish release** to make it public. The manual publish step is intentional — it's a safety net so a broken CI build can never silently ship to users.
+
+You can also trigger the workflow manually from the **Actions** tab via "Run workflow" if you need to rebuild an existing tag.
 
 ## Usage
 
